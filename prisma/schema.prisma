@@ -6,55 +6,86 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // User model - stores both Clerk auth data and application data
 model User {
-  id        String   @id // Use Clerk's user ID directly as primary key
+  id        String   @id
   email     String   @unique
   name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   notebooks Notebook[]
+
+  // ✅ ADD THIS
+  collaborations NotebookCollaborator[]
 
   @@map("users")
 }
+
 
 // Notebook model - foundation for the main feature
 model Notebook {
   id           String   @id @default(cuid())
   title        String   @default("Untitled")
-  description  String?  @db.Text
+  description  String?
   content      String   @default("")
-  originalText String?  @db.Text // extracted full document
-  summaryText  String?  @db.Text // AI summary
-  chatMessages Json?    // ✅ Fixed typo from cchatMessages
+  originalText String?
+  summaryText  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // ✅ Add reverse relation for ChatMessage
-  messages ChatMessage[]
+  chatMessages ChatMessage[]
+
+  // ✅ ADD THIS
+  collaborators NotebookCollaborator[]
 
   @@index([userId])
   @@map("notebooks")
 }
 
-model ChatMessage {
-  id        String   @id @default(cuid())
-  content   String   @db.Text
-  role      String   // "user" | "assistant"
-  createdAt DateTime @default(now())
 
-  notebookId String
-  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+model ChatMessage {
+  id          String   @id @default(cuid())
+  content     String   @db.Text
+  role        String   // "user" | "assistant" | "system"
+
+  authorId    String?  // userId if human
+  authorType  String   // "human" | "agent" | "system"
+  authorName  String?  // display name (agent name or user name)
+
+  createdAt   DateTime @default(now())
+
+  notebookId  String
+  notebook    Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
 
   @@index([notebookId])
   @@map("chat_messages")
 }
+
+model NotebookCollaborator {
+  id          String   @id @default(cuid())
+  notebookId  String
+  userId      String?     // null until invite accepted
+  email       String?     // invited email
+  role        String      @default("editor") // owner | editor | viewer
+  status      String      @default("active") // active | pending | removed
+  type        String      // human | agent
+  agentType   String?
+  agentName   String?
+  createdAt   DateTime    @default(now())
+
+  notebook Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([notebookId])
+  @@index([email])
+}
+
