@@ -1,0 +1,60 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - stores both Clerk auth data and application data
+model User {
+  id        String   @id // Use Clerk's user ID directly as primary key
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  notebooks Notebook[]
+
+  @@map("users")
+}
+
+// Notebook model - foundation for the main feature
+model Notebook {
+  id           String   @id @default(cuid())
+  title        String   @default("Untitled")
+  description  String?  @db.Text
+  content      String   @default("")
+  originalText String?  @db.Text // extracted full document
+  summaryText  String?  @db.Text // AI summary
+  chatMessages Json?    // ✅ Fixed typo from cchatMessages
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // ✅ Add reverse relation for ChatMessage
+  messages ChatMessage[]
+
+  @@index([userId])
+  @@map("notebooks")
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  role      String   // "user" | "assistant"
+  createdAt DateTime @default(now())
+
+  notebookId String
+  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+
+  @@index([notebookId])
+  @@map("chat_messages")
+}
