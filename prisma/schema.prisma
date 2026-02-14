@@ -19,14 +19,15 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  notebooks Notebook[]
-
-  // ✅ ADD THIS
-  collaborations NotebookCollaborator[]
+  notebooks              Notebook[]
+  collaborations         NotebookCollaborator[]
+  sentInvitations        CollaborationInvite[] @relation("InviteSender")
+  receivedInvitations    CollaborationInvite[] @relation("InviteReceiver")
+  proposedChanges        ProposedChange[]
+  notifications          Notification[]
 
   @@map("users")
 }
-
 
 // Notebook model - foundation for the main feature
 model Notebook {
@@ -42,15 +43,14 @@ model Notebook {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  chatMessages ChatMessage[]
-
-  // ✅ ADD THIS
+  chatMessages  ChatMessage[]
   collaborators NotebookCollaborator[]
+  invitations   CollaborationInvite[]
+  changes       ProposedChange[]
 
   @@index([userId])
   @@map("notebooks")
 }
-
 
 model ChatMessage {
   id          String   @id @default(cuid())
@@ -80,6 +80,8 @@ model NotebookCollaborator {
   type        String      // human | agent
   agentType   String?
   agentName   String?
+  canEdit     Boolean     @default(true)
+  joinedAt    DateTime    @default(now())
   createdAt   DateTime    @default(now())
 
   notebook Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
@@ -87,5 +89,68 @@ model NotebookCollaborator {
 
   @@index([notebookId])
   @@index([email])
+  @@index([userId])
+  @@map("notebook_collaborators")
 }
 
+// Collaboration invite model - manages invitation workflow
+model CollaborationInvite {
+  id          String   @id @default(cuid())
+  status      String   @default("pending") // "pending" | "accepted" | "rejected"
+  message     String?  @db.Text
+  createdAt   DateTime @default(now())
+  respondedAt DateTime?
+
+  senderId   String
+  sender     User     @relation("InviteSender", fields: [senderId], references: [id], onDelete: Cascade)
+  
+  receiverId String
+  receiver   User     @relation("InviteReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  
+  notebookId String
+  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+
+  @@index([receiverId, status])
+  @@index([senderId])
+  @@index([notebookId])
+  @@map("collaboration_invites")
+}
+
+// Proposed change model - tracks edit suggestions from collaborators
+model ProposedChange {
+  id              String   @id @default(cuid())
+  lineNumber      Int
+  originalText    String   @db.Text
+  proposedText    String   @db.Text
+  reason          String?  @db.Text
+  status          String   @default("pending") // "pending" | "accepted" | "rejected"
+  createdAt       DateTime @default(now())
+  reviewedAt      DateTime?
+
+  proposerId      String
+  proposer        User     @relation(fields: [proposerId], references: [id], onDelete: Cascade)
+  
+  notebookId      String
+  notebook        Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+
+  @@index([notebookId, status])
+  @@index([proposerId])
+  @@map("proposed_changes")
+}
+
+// Notification model - user notifications for all collaboration events
+model Notification {
+  id        String   @id @default(cuid())
+  type      String   // "invite" | "change_proposed" | "change_reviewed" | "mention"
+  title     String
+  message   String   @db.Text
+  read      Boolean  @default(false)
+  link      String?  // Link to the relevant page
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@map("notifications")
+}

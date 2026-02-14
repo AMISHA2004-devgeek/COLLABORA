@@ -10,21 +10,43 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Plus, ArrowUpRight } from "lucide-react"; // ✅ Add ArrowUpRight
+import { Plus, ArrowUpRight, Users } from "lucide-react";
 
 export default async function DashboardPage() {
-  const { userId } =await auth();
+  const { userId } = await auth();
 
   if (!userId) {
     redirect("/sign-in");
   }
 
-  const safeUserId = userId;
-
-  const notebooks = await prisma.notebook.findMany({
-    where: { userId: safeUserId },
-    orderBy: { createdAt: "desc" },
+  // Fetch owned notebooks
+  const ownedNotebooks = await prisma.notebook.findMany({
+    where: { userId: userId },
+    orderBy: { updatedAt: "desc" },
   });
+
+  // Fetch shared notebooks (where user is a collaborator)
+  const collaborations = await prisma.notebookCollaborator.findMany({
+    where: {
+      userId: userId,
+      status: "active",
+      type: "human",
+    },
+    include: {
+      notebook: true,
+    },
+    orderBy: { joinedAt: "desc" },
+  });
+
+  const sharedNotebooks = collaborations
+    .filter((c) => c.notebook.userId !== userId) // Exclude notebooks user owns
+    .map((c) => ({
+      ...c.notebook,
+      role: c.role,
+      isShared: true,
+    }));
+
+  const totalNotebooks = ownedNotebooks.length + sharedNotebooks.length;
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
@@ -36,7 +58,8 @@ export default async function DashboardPage() {
               Your Notebooks
             </h1>
             <p className="mt-2 text-slate-600">
-              Create and manage your research notebooks
+              {ownedNotebooks.length} owned
+              {sharedNotebooks.length > 0 && ` • ${sharedNotebooks.length} shared with you`}
             </p>
           </div>
 
@@ -48,8 +71,8 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        {/* Notebook List */}
-        {notebooks.length === 0 ? (
+        {/* Empty State */}
+        {totalNotebooks === 0 ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12">
               <div className="mb-4 rounded-lg bg-slate-100 p-3">
@@ -64,34 +87,86 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {notebooks.map((notebook) => (
-              <Link
-                key={notebook.id}
-                href={`/dashboard/${notebook.id}`}
-                className="group"
-              >
-                <Card className="hover:shadow-md transition cursor-pointer relative">
-                  <CardHeader>
-                    {/* ✅ Arrow Icon - Top Right */}
-                    <div className="absolute top-4 right-4 text-gray-400 group-hover:text-gray-700 transition-colors">
-                      <ArrowUpRight className="h-5 w-5" />
-                    </div>
+          <div className="space-y-8">
+            {/* Owned Notebooks */}
+            {ownedNotebooks.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 mb-4">
+                  My Notebooks
+                </h2>
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {ownedNotebooks.map((notebook) => (
+                    <Link
+                      key={notebook.id}
+                      href={`/dashboard/${notebook.id}`}
+                      className="group"
+                    >
+                      <Card className="hover:shadow-md transition cursor-pointer relative">
+                        <CardHeader>
+                          <div className="absolute top-4 right-4 text-gray-400 group-hover:text-gray-700 transition-colors">
+                            <ArrowUpRight className="h-5 w-5" />
+                          </div>
 
-                    <CardTitle className="pr-8">{notebook.title}</CardTitle>
+                          <CardTitle className="pr-8">{notebook.title}</CardTitle>
 
-                    <CardDescription>
-                      {notebook.description || "No description"}
-                    </CardDescription>
+                          <CardDescription>
+                            {notebook.description || "No description"}
+                          </CardDescription>
 
-                    <p className="text-xs text-slate-500 mt-2">
-                      Created:{" "}
-                      {new Date(notebook.createdAt).toLocaleString()}
-                    </p>
-                  </CardHeader>
-                </Card>
-              </Link>
-            ))}
+                          <p className="text-xs text-slate-500 mt-2">
+                            Updated:{" "}
+                            {new Date(notebook.updatedAt).toLocaleDateString()}
+                          </p>
+                        </CardHeader>
+                      </Card>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Shared Notebooks */}
+            {sharedNotebooks.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Shared With Me
+                </h2>
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {sharedNotebooks.map((notebook) => (
+                    <Link
+                      key={notebook.id}
+                      href={`/dashboard/${notebook.id}`}
+                      className="group"
+                    >
+                      <Card className="hover:shadow-md transition cursor-pointer relative border-l-4 border-l-blue-500">
+                        <CardHeader>
+                          <div className="absolute top-4 right-4 text-gray-400 group-hover:text-gray-700 transition-colors">
+                            <ArrowUpRight className="h-5 w-5" />
+                          </div>
+
+                          <CardTitle className="pr-8">{notebook.title}</CardTitle>
+
+                          <CardDescription>
+                            {notebook.description || "No description"}
+                          </CardDescription>
+
+                          <div className="flex items-center justify-between mt-2">
+                            <p className="text-xs text-slate-500">
+                              Updated:{" "}
+                              {new Date(notebook.updatedAt).toLocaleDateString()}
+                            </p>
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                              {notebook.role}
+                            </span>
+                          </div>
+                        </CardHeader>
+                      </Card>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -107,12 +107,14 @@ export default async function NotebookPage({
               <p className="text-gray-600 mb-4">
                 You don&apos;t have permission to view this notebook.
               </p>
+              
               <a
-                href="/dashboard"
-                className="inline-block bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
-              >
-                Back to Dashboard
-              </a>
+  href="/dashboard"
+  className="inline-block bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
+>
+  Back to Dashboard
+</a>
+
             </CardContent>
           </Card>
         </div>
@@ -209,12 +211,15 @@ export default async function NotebookPage({
             <p className="text-sm text-gray-500 mb-4">
               Error: {error.message || "Unknown error"}
             </p>
+            
             <a
-              href="/dashboard"
-              className="inline-block bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
-            >
-              Back to Dashboard
-            </a>
+  href="/dashboard"
+  className="inline-block bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
+>
+  Back to Dashboard
+</a>
+
+          
           </CardContent>
         </Card>
       </div>
