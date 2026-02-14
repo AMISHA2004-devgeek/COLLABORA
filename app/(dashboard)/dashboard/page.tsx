@@ -13,7 +13,7 @@ import {
 import { Plus, ArrowUpRight } from "lucide-react"; // ✅ Add ArrowUpRight
 
 export default async function DashboardPage() {
-  const { userId } = await auth();
+  const { userId } =await auth();
 
   if (!userId) {
     redirect("/sign-in");
