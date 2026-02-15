@@ -31,121 +31,124 @@ model User {
 
 // Notebook model - foundation for the main feature
 model Notebook {
-  id           String   @id @default(cuid())
-  title        String   @default("Untitled")
-  description  String?
-  content      String   @default("")
-  originalText String?
-  summaryText  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String   @id @default(cuid())
+  title          String   @default("Untitled")
+  description    String?
+  content        String   @default("")
+  originalText   String?
+  summaryText    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  chatMessages  ChatMessage[]
-  collaborators NotebookCollaborator[]
-  invitations   CollaborationInvite[]
-  changes       ProposedChange[]
+  userId         String
+  organizationId String?
+  
+  user           User                    @relation(fields: [userId], references: [id])
+  collaborators  NotebookCollaborator[]
+  chatMessages   ChatMessage[]
+  changes        ProposedChange[]
+  invitations    CollaborationInvite[]
 
   @@index([userId])
+  @@index([organizationId])
   @@map("notebooks")
 }
 
+// NotebookCollaborator - ONLY for AI agents now (humans use Clerk Organizations)
+model NotebookCollaborator {
+  id         String   @id @default(cuid())
+  notebookId String
+  userId     String?
+  email      String?
+  
+  role       String   @default("editor")
+  status     String   @default("active")
+  type       String   @default("agent")
+  
+  agentType  String?
+  agentName  String?
+  
+  canEdit    Boolean  @default(true)
+  joinedAt   DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  notebook Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id])
+
+  @@index([notebookId])
+  @@index([userId])
+  @@map("notebook_collaborators")
+}
+
+// CollaborationInvite - for external (non-org) human invites only
+model CollaborationInvite {
+  id            String   @id @default(cuid())
+  notebookId    String
+  senderId      String
+  receiverId    String?
+  receiverEmail String
+  message       String?  @db.Text
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+
+  notebook Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  sender   User     @relation("InviteSender", fields: [senderId], references: [id])
+  receiver User?    @relation("InviteReceiver", fields: [receiverId], references: [id])
+
+  @@index([notebookId])
+  @@index([receiverEmail])
+  @@map("collaboration_invites")
+}
+
+// ChatMessage - stores all chat interactions
 model ChatMessage {
-  id          String   @id @default(cuid())
-  content     String   @db.Text
-  role        String   // "user" | "assistant" | "system"
+  id         String   @id @default(cuid())
+  content    String   @db.Text
+  role       String
 
-  authorId    String?  // userId if human
-  authorType  String   // "human" | "agent" | "system"
-  authorName  String?  // display name (agent name or user name)
+  authorId   String?
+  authorType String
+  authorName String?
 
-  createdAt   DateTime @default(now())
+  createdAt  DateTime @default(now())
 
-  notebookId  String
-  notebook    Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  notebookId String
+  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
 
   @@index([notebookId])
   @@map("chat_messages")
 }
 
-model NotebookCollaborator {
-  id          String   @id @default(cuid())
-  notebookId  String
-  userId      String?     // null until invite accepted
-  email       String?     // invited email
-  role        String      @default("editor") // owner | editor | viewer
-  status      String      @default("active") // active | pending | removed
-  type        String      // human | agent
-  agentType   String?
-  agentName   String?
-  canEdit     Boolean     @default(true)
-  joinedAt    DateTime    @default(now())
-  createdAt   DateTime    @default(now())
-
-  notebook Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
-  user     User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([notebookId])
-  @@index([email])
-  @@index([userId])
-  @@map("notebook_collaborators")
-}
-
-// Collaboration invite model - manages invitation workflow
-model CollaborationInvite {
-  id          String   @id @default(cuid())
-  status      String   @default("pending") // "pending" | "accepted" | "rejected"
-  message     String?  @db.Text
-  createdAt   DateTime @default(now())
-  respondedAt DateTime?
-
-  senderId   String
-  sender     User     @relation("InviteSender", fields: [senderId], references: [id], onDelete: Cascade)
-  
-  receiverId String
-  receiver   User     @relation("InviteReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
-  
-  notebookId String
-  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
-
-  @@index([receiverId, status])
-  @@index([senderId])
-  @@index([notebookId])
-  @@map("collaboration_invites")
-}
-
-// Proposed change model - tracks edit suggestions from collaborators
+// ProposedChange - tracks edit suggestions from AI agents and collaborators
 model ProposedChange {
-  id              String   @id @default(cuid())
-  lineNumber      Int
-  originalText    String   @db.Text
-  proposedText    String   @db.Text
-  reason          String?  @db.Text
-  status          String   @default("pending") // "pending" | "accepted" | "rejected"
-  createdAt       DateTime @default(now())
-  reviewedAt      DateTime?
+  id           String   @id @default(cuid())
+  lineNumber   Int
+  originalText String   @db.Text
+  proposedText String   @db.Text
+  reason       String?  @db.Text
+  status       String   @default("pending")
+  createdAt    DateTime @default(now())
+  reviewedAt   DateTime?
 
-  proposerId      String
-  proposer        User     @relation(fields: [proposerId], references: [id], onDelete: Cascade)
+  proposerId   String
+  proposer     User     @relation(fields: [proposerId], references: [id], onDelete: Cascade)
   
-  notebookId      String
-  notebook        Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  notebookId   String
+  notebook     Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
 
   @@index([notebookId, status])
   @@index([proposerId])
   @@map("proposed_changes")
 }
 
-// Notification model - user notifications for all collaboration events
+// Notification - user notifications for all collaboration events
 model Notification {
   id        String   @id @default(cuid())
-  type      String   // "invite" | "change_proposed" | "change_reviewed" | "mention"
+  type      String
   title     String
   message   String   @db.Text
   read      Boolean  @default(false)
-  link      String?  // Link to the relevant page
+  link      String?
   createdAt DateTime @default(now())
 
   userId    String
@@ -154,4 +157,3 @@ model Notification {
   @@index([userId, read])
   @@map("notifications")
 }
-

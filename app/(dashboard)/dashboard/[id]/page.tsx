@@ -1,4 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { clerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import NotebookPageClient from "./notebook-page-client";
@@ -13,7 +14,8 @@ export default async function NotebookPage({
        AUTHENTICATION
     ================================= */
 
-    const { userId } = await auth();
+    const { userId, orgId } = await auth(); // ✅ Get orgId
+
     if (!userId) {
       redirect("/sign-in");
     }
@@ -24,52 +26,14 @@ export default async function NotebookPage({
     }
 
     /* ================================
-       AUTO-ACTIVATE INVITE (ROBUST)
-    ================================= */
-
-    const userEmails = user.emailAddresses.map((e) =>
-      e.emailAddress.toLowerCase()
-    );
-
-    if (userEmails.length > 0) {
-      try {
-        await prisma.notebookCollaborator.updateMany({
-          where: {
-            notebookId: params.id,
-            email: {
-              in: userEmails,
-              mode: "insensitive",
-            },
-            status: "pending",
-          },
-          data: {
-            userId: userId,
-            status: "active",
-            type: "human",
-          },
-        });
-      } catch (err) {
-        console.error("⚠️ Auto-activation error:", err);
-      }
-    }
-
-    /* ================================
-       FETCH NOTEBOOK WITH AGENTS
+       FETCH NOTEBOOK
     ================================= */
 
     const notebook = await prisma.notebook.findUnique({
       where: { id: params.id },
       include: {
         collaborators: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                email: true,
-                name: true,
-              },
-            },
-          },
+          where: { type: "agent" }, // ✅ Only fetch AI agents
         },
         chatMessages: {
           orderBy: { createdAt: "asc" },
@@ -83,25 +47,30 @@ export default async function NotebookPage({
     }
 
     /* ================================
-       ACCESS CONTROL
+       ACCESS CONTROL (NEW LOGIC)
     ================================= */
 
     const isOwner = notebook.userId === userId;
 
-    const isCollaborator = notebook.collaborators.some(
-      (collab) =>
-        collab.userId === userId &&
-        collab.status === "active" &&
-        collab.type === "human"
-    );
+    // ✅ Check organization membership
+    let isOrgMember = false;
+    if (notebook.organizationId && orgId === notebook.organizationId) {
+      isOrgMember = true;
+    }
 
-    if (!isOwner && !isCollaborator) {
+    // ✅ New access check: owner OR org member
+    const hasAccess = isOwner || isOrgMember;
+
+    if (!hasAccess) {
       return (
         <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center">
           <div className="max-w-md w-full bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-bold mb-4">Access Denied</h2>
             <p className="text-gray-600 mb-4">
-              You don&apos;t have permission to view this notebook.
+              {notebook.organizationId 
+                ? "This notebook belongs to a workspace you're not a member of."
+                : "You don't have permission to view this notebook."
+              }
             </p>
             <a
               href="/dashboard"
@@ -129,6 +98,7 @@ export default async function NotebookPage({
       createdAt: notebook.createdAt.toISOString(),
       updatedAt: notebook.updatedAt.toISOString(),
       userId: notebook.userId,
+      organizationId: notebook.organizationId,
 
       chatMessages: notebook.chatMessages.map((msg) => ({
         id: msg.id,
@@ -151,16 +121,6 @@ export default async function NotebookPage({
         agentType: collab.agentType,
         agentName: collab.agentName,
         createdAt: collab.createdAt.toISOString(),
-        user: collab.user
-          ? {
-              id: collab.user.id,
-              email: collab.user.email,
-              name: collab.user.name,
-              firstName:
-                collab.user.name?.split(" ")[0] ||
-                collab.user.email?.split("@")[0],
-            }
-          : null,
       })),
     };
 
@@ -187,7 +147,7 @@ export default async function NotebookPage({
         notebook={serializedNotebook}
         activeAgents={activeAgents}
         isOwner={isOwner}
-        isCollaborator={isCollaborator}
+        isOrgMember={isOrgMember}
       />
     );
   } catch (error: any) {

@@ -10,43 +10,54 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Plus, ArrowUpRight, Users } from "lucide-react";
+import { Plus, ArrowUpRight, Users, Building2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 export default async function DashboardPage() {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
 
   if (!userId) {
     redirect("/sign-in");
   }
 
-  // Fetch owned notebooks
-  const ownedNotebooks = await prisma.notebook.findMany({
-    where: { userId: userId },
+  // ✅ Fetch personal notebooks (no org) - also include user for consistency
+  const personalNotebooks = await prisma.notebook.findMany({
+    where: {
+      userId: userId,
+      organizationId: null,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+        },
+      },
+    },
     orderBy: { updatedAt: "desc" },
   });
 
-  // Fetch shared notebooks (where user is a collaborator)
-  const collaborations = await prisma.notebookCollaborator.findMany({
-    where: {
-      userId: userId,
-      status: "active",
-      type: "human",
-    },
-    include: {
-      notebook: true,
-    },
-    orderBy: { joinedAt: "desc" },
-  });
+  // ✅ Fetch workspace notebooks (if in org)
+  const workspaceNotebooks = orgId
+    ? await prisma.notebook.findMany({
+        where: {
+          organizationId: orgId,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+      })
+    : [];
 
-  const sharedNotebooks = collaborations
-    .filter((c) => c.notebook.userId !== userId) // Exclude notebooks user owns
-    .map((c) => ({
-      ...c.notebook,
-      role: c.role,
-      isShared: true,
-    }));
-
-  const totalNotebooks = ownedNotebooks.length + sharedNotebooks.length;
+  const totalNotebooks = personalNotebooks.length + workspaceNotebooks.length;
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
@@ -55,11 +66,13 @@ export default async function DashboardPage() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">
-              Your Notebooks
+              {orgId ? "Workspace Notebooks" : "Your Notebooks"}
             </h1>
             <p className="mt-2 text-slate-600">
-              {ownedNotebooks.length} owned
-              {sharedNotebooks.length > 0 && ` • ${sharedNotebooks.length} shared with you`}
+              {orgId
+                ? `${workspaceNotebooks.length} workspace • ${personalNotebooks.length} personal`
+                : `${personalNotebooks.length} notebook${personalNotebooks.length !== 1 ? "s" : ""}`
+              }
             </p>
           </div>
 
@@ -88,14 +101,63 @@ export default async function DashboardPage() {
           </Card>
         ) : (
           <div className="space-y-8">
-            {/* Owned Notebooks */}
-            {ownedNotebooks.length > 0 && (
+            {/* Workspace Notebooks */}
+            {workspaceNotebooks.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-slate-900 mb-4">
-                  My Notebooks
+                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  Workspace
+                  <Badge variant="secondary">{workspaceNotebooks.length}</Badge>
                 </h2>
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {ownedNotebooks.map((notebook) => (
+                  {workspaceNotebooks.map((notebook) => (
+                    <Link
+                      key={notebook.id}
+                      href={`/dashboard/${notebook.id}`}
+                      className="group"
+                    >
+                      <Card className="hover:shadow-md transition cursor-pointer relative border-l-4 border-l-blue-500">
+                        <CardHeader>
+                          <div className="absolute top-4 right-4 text-gray-400 group-hover:text-gray-700 transition-colors">
+                            <ArrowUpRight className="h-5 w-5" />
+                          </div>
+
+                          <CardTitle className="pr-8">{notebook.title}</CardTitle>
+
+                          <CardDescription>
+                            {notebook.description || "No description"}
+                          </CardDescription>
+
+                          <div className="flex items-center justify-between mt-3">
+                            <p className="text-xs text-slate-500">
+                              {new Date(notebook.updatedAt).toLocaleDateString()}
+                            </p>
+                            {notebook.userId === userId ? (
+                              <Badge>Owner</Badge>
+                            ) : (
+                              <div className="text-xs text-gray-600">
+                                by {notebook.user.name || notebook.user.email}
+                              </div>
+                            )}
+                          </div>
+                        </CardHeader>
+                      </Card>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Personal Notebooks */}
+            {personalNotebooks.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Personal
+                  <Badge variant="secondary">{personalNotebooks.length}</Badge>
+                </h2>
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {personalNotebooks.map((notebook) => (
                     <Link
                       key={notebook.id}
                       href={`/dashboard/${notebook.id}`}
@@ -117,49 +179,6 @@ export default async function DashboardPage() {
                             Updated:{" "}
                             {new Date(notebook.updatedAt).toLocaleDateString()}
                           </p>
-                        </CardHeader>
-                      </Card>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Shared Notebooks */}
-            {sharedNotebooks.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Shared With Me
-                </h2>
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {sharedNotebooks.map((notebook) => (
-                    <Link
-                      key={notebook.id}
-                      href={`/dashboard/${notebook.id}`}
-                      className="group"
-                    >
-                      <Card className="hover:shadow-md transition cursor-pointer relative border-l-4 border-l-blue-500">
-                        <CardHeader>
-                          <div className="absolute top-4 right-4 text-gray-400 group-hover:text-gray-700 transition-colors">
-                            <ArrowUpRight className="h-5 w-5" />
-                          </div>
-
-                          <CardTitle className="pr-8">{notebook.title}</CardTitle>
-
-                          <CardDescription>
-                            {notebook.description || "No description"}
-                          </CardDescription>
-
-                          <div className="flex items-center justify-between mt-2">
-                            <p className="text-xs text-slate-500">
-                              Updated:{" "}
-                              {new Date(notebook.updatedAt).toLocaleDateString()}
-                            </p>
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                              {notebook.role}
-                            </span>
-                          </div>
                         </CardHeader>
                       </Card>
                     </Link>

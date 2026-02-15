@@ -17,16 +17,16 @@ const AGENT_ICONS: Record<string, string> = {
   "Audience Insights Analyst": "📊",
 };
 
-export default function NotebookPageClient({
+export  default function NotebookPageClient({
   notebook,
   activeAgents,
   isOwner,
-  isCollaborator,
+  isOrgMember, // ✅ Changed from isCollaborator
 }: {
   notebook: any;
   activeAgents: string[];
   isOwner: boolean;
-  isCollaborator: boolean;
+  isOrgMember: boolean; // ✅ Changed type
 }) {
   const router = useRouter();
 
@@ -52,9 +52,12 @@ export default function NotebookPageClient({
                 <CardTitle className="text-2xl">
                   {notebook.title || "Untitled Notebook"}
                 </CardTitle>
-                {isCollaborator && !isOwner && (
-                  <p className="text-sm text-blue-600 mt-1">📋 Shared with you</p>
-                )}
+               {isOrgMember && !isOwner && (
+  <p className="text-sm text-blue-600 mt-1">
+    🏢 Workspace Notebook
+  </p>
+)}
+
               </div>
               {/* ✅ ADD THIS: Action Buttons for Owner */}
               {isOwner && (
