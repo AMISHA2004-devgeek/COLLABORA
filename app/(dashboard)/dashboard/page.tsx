@@ -10,8 +10,9 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Plus, ArrowUpRight, Users, Building2 } from "lucide-react";
+import { Plus, ArrowUpRight, Crown, Users, Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { InviteToOrganization } from "@/components/invite-to-organization";
 
 export default async function DashboardPage() {
   const { userId, orgId } = await auth();
@@ -20,11 +21,10 @@ export default async function DashboardPage() {
     redirect("/sign-in");
   }
 
-  // ✅ Fetch personal notebooks (no org) - also include user for consistency
-  const personalNotebooks = await prisma.notebook.findMany({
+  // Fetch notebooks owned by user
+  const ownedNotebooks = await prisma.notebook.findMany({
     where: {
       userId: userId,
-      organizationId: null,
     },
     include: {
       user: {
@@ -38,11 +38,12 @@ export default async function DashboardPage() {
     orderBy: { updatedAt: "desc" },
   });
 
-  // ✅ Fetch workspace notebooks (if in org)
-  const workspaceNotebooks = orgId
+  // Fetch notebooks user is collaborating on (in same org, but not owner)
+  const collaboratingNotebooks = orgId
     ? await prisma.notebook.findMany({
         where: {
           organizationId: orgId,
+          userId: { not: userId }, // Not owned by current user
         },
         include: {
           user: {
@@ -57,22 +58,17 @@ export default async function DashboardPage() {
       })
     : [];
 
-  const totalNotebooks = personalNotebooks.length + workspaceNotebooks.length;
-
   return (
     <div className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-7xl">
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">
-              {orgId ? "Workspace Notebooks" : "Your Notebooks"}
+              {orgId ? "Workspace" : "Your Notebooks"}
             </h1>
             <p className="mt-2 text-slate-600">
-              {orgId
-                ? `${workspaceNotebooks.length} workspace • ${personalNotebooks.length} personal`
-                : `${personalNotebooks.length} notebook${personalNotebooks.length !== 1 ? "s" : ""}`
-              }
+              {ownedNotebooks.length} owned • {collaboratingNotebooks.length} collaborating
             </p>
           </div>
 
@@ -84,80 +80,25 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        {/* Empty State */}
-        {totalNotebooks === 0 ? (
-          <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <div className="mb-4 rounded-lg bg-slate-100 p-3">
-                <Plus className="h-8 w-8 text-slate-600" />
-              </div>
-              <h2 className="mb-2 text-lg font-semibold text-slate-900">
-                No notebooks yet
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Main Content - 3 columns */}
+          <div className="lg:col-span-3 space-y-8">
+            {/* Owned Notebooks */}
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                <Crown className="h-5 w-5 text-yellow-500" />
+                You Own
+                <Badge variant="secondary">{ownedNotebooks.length}</Badge>
               </h2>
-              <p className="mb-6 text-center text-slate-600">
-                Create your first notebook to get started
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-8">
-            {/* Workspace Notebooks */}
-            {workspaceNotebooks.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <Building2 className="h-5 w-5" />
-                  Workspace
-                  <Badge variant="secondary">{workspaceNotebooks.length}</Badge>
-                </h2>
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {workspaceNotebooks.map((notebook) => (
-                    <Link
-                      key={notebook.id}
-                      href={`/dashboard/${notebook.id}`}
-                      className="group"
-                    >
-                      <Card className="hover:shadow-md transition cursor-pointer relative border-l-4 border-l-blue-500">
-                        <CardHeader>
-                          <div className="absolute top-4 right-4 text-gray-400 group-hover:text-gray-700 transition-colors">
-                            <ArrowUpRight className="h-5 w-5" />
-                          </div>
-
-                          <CardTitle className="pr-8">{notebook.title}</CardTitle>
-
-                          <CardDescription>
-                            {notebook.description || "No description"}
-                          </CardDescription>
-
-                          <div className="flex items-center justify-between mt-3">
-                            <p className="text-xs text-slate-500">
-                              {new Date(notebook.updatedAt).toLocaleDateString()}
-                            </p>
-                            {notebook.userId === userId ? (
-                              <Badge>Owner</Badge>
-                            ) : (
-                              <div className="text-xs text-gray-600">
-                                by {notebook.user.name || notebook.user.email}
-                              </div>
-                            )}
-                          </div>
-                        </CardHeader>
-                      </Card>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Personal Notebooks */}
-            {personalNotebooks.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Personal
-                  <Badge variant="secondary">{personalNotebooks.length}</Badge>
-                </h2>
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {personalNotebooks.map((notebook) => (
+              {ownedNotebooks.length === 0 ? (
+                <Card className="border-dashed">
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <p className="text-gray-500">No notebooks yet</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {ownedNotebooks.map((notebook) => (
                     <Link
                       key={notebook.id}
                       href={`/dashboard/${notebook.id}`}
@@ -165,20 +106,64 @@ export default async function DashboardPage() {
                     >
                       <Card className="hover:shadow-md transition cursor-pointer relative">
                         <CardHeader>
-                          <div className="absolute top-4 right-4 text-gray-400 group-hover:text-gray-700 transition-colors">
+                          <div className="absolute top-4 right-4 text-gray-400 group-hover:text-gray-700">
                             <ArrowUpRight className="h-5 w-5" />
                           </div>
-
                           <CardTitle className="pr-8">{notebook.title}</CardTitle>
-
                           <CardDescription>
                             {notebook.description || "No description"}
                           </CardDescription>
+                          <div className="flex items-center gap-2 mt-2">
+                            <p className="text-xs text-slate-500">
+                              {new Date(notebook.updatedAt).toLocaleDateString()}
+                            </p>
+                            {notebook.organizationId && (
+                              <Badge variant="outline" className="text-xs">
+                                <Building2 className="h-3 w-3 mr-1" />
+                                Workspace
+                              </Badge>
+                            )}
+                          </div>
+                        </CardHeader>
+                      </Card>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
 
-                          <p className="text-xs text-slate-500 mt-2">
-                            Updated:{" "}
-                            {new Date(notebook.updatedAt).toLocaleDateString()}
-                          </p>
+            {/* Collaborating Notebooks */}
+            {collaboratingNotebooks.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                  <Users className="h-5 w-5 text-blue-500" />
+                  You're Collaborating On
+                  <Badge variant="secondary">{collaboratingNotebooks.length}</Badge>
+                </h2>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {collaboratingNotebooks.map((notebook) => (
+                    <Link
+                      key={notebook.id}
+                      href={`/dashboard/${notebook.id}`}
+                      className="group"
+                    >
+                      <Card className="hover:shadow-md transition cursor-pointer relative border-l-4 border-l-blue-500">
+                        <CardHeader>
+                          <div className="absolute top-4 right-4 text-gray-400 group-hover:text-gray-700">
+                            <ArrowUpRight className="h-5 w-5" />
+                          </div>
+                          <CardTitle className="pr-8">{notebook.title}</CardTitle>
+                          <CardDescription>
+                            {notebook.description || "No description"}
+                          </CardDescription>
+                          <div className="flex items-center justify-between mt-2">
+                            <p className="text-xs text-slate-500">
+                              {new Date(notebook.updatedAt).toLocaleDateString()}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              by {notebook.user.name || notebook.user.email}
+                            </p>
+                          </div>
                         </CardHeader>
                       </Card>
                     </Link>
@@ -187,7 +172,19 @@ export default async function DashboardPage() {
               </div>
             )}
           </div>
-        )}
+
+          {/* Sidebar - 1 column */}
+          <div className="lg:col-span-1">
+            <Card className="sticky top-6">
+              <CardHeader>
+                <CardTitle className="text-lg">Team Management</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <InviteToOrganization />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

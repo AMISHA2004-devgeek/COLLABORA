@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import NotebookEditor from "./NotebookEditor";
 import { AgentsWorkspace } from "@/components/agents-workspace";
 import { AgentChatMessage } from "@/components/agent-chat-message";
+import { LiveChat } from "@/components/live-chat"; // ✅ NEW
 import { useRouter } from "next/navigation";
 import { FileEdit, Users, MessageSquare, Bot } from "lucide-react";
 
@@ -17,16 +18,16 @@ const AGENT_ICONS: Record<string, string> = {
   "Audience Insights Analyst": "📊",
 };
 
-export  default function NotebookPageClient({
+export default function NotebookPageClient({
   notebook,
   activeAgents,
   isOwner,
-  isOrgMember, // ✅ Changed from isCollaborator
+  isOrgMember,
 }: {
   notebook: any;
   activeAgents: string[];
   isOwner: boolean;
-  isOrgMember: boolean; // ✅ Changed type
+  isOrgMember: boolean;
 }) {
   const router = useRouter();
 
@@ -52,14 +53,12 @@ export  default function NotebookPageClient({
                 <CardTitle className="text-2xl">
                   {notebook.title || "Untitled Notebook"}
                 </CardTitle>
-               {isOrgMember && !isOwner && (
-  <p className="text-sm text-blue-600 mt-1">
-    🏢 Workspace Notebook
-  </p>
-)}
-
+                {isOrgMember && !isOwner && (
+                  <p className="text-sm text-blue-600 mt-1">
+                    🏢 Workspace Notebook
+                  </p>
+                )}
               </div>
-              {/* ✅ ADD THIS: Action Buttons for Owner */}
               {isOwner && (
                 <div className="flex gap-2">
                   <Button onClick={handleGoToReview} variant="outline">
@@ -76,7 +75,6 @@ export  default function NotebookPageClient({
           </CardHeader>
         </Card>
 
-        {/* ✅ CHANGED: 4 tabs instead of 3 */}
         <Tabs defaultValue="summary" className="w-full">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="summary">
@@ -98,11 +96,11 @@ export  default function NotebookPageClient({
             </TabsTrigger>
             <TabsTrigger value="chat">
               <MessageSquare className="h-4 w-4 mr-2" />
-              Chat History
+              Live Chat
             </TabsTrigger>
           </TabsList>
 
-          {/* Tab 1: Summary Editor */}
+          {/* Tab 1: Summary */}
           <TabsContent value="summary" className="mt-6">
             <Card>
               <CardContent className="pt-6">
@@ -129,7 +127,6 @@ export  default function NotebookPageClient({
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {/* Human Collaborators */}
                   {notebook.collaborators
                     .filter((c: any) => c.type === "human")
                     .map((collab: any) => (
@@ -154,7 +151,6 @@ export  default function NotebookPageClient({
                       </div>
                     ))}
 
-                  {/* AI Agents */}
                   {notebook.collaborators.filter((c: any) => c.type === "agent" && c.status === "active")
                     .length > 0 && (
                     <>
@@ -185,93 +181,18 @@ export  default function NotebookPageClient({
                         ))}
                     </>
                   )}
-
-                  {notebook.collaborators.length === 1 && (
-                    <p className="text-center text-gray-500 py-8">
-                      No collaborators yet. Invite people or add AI agents!
-                    </p>
-                  )}
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Tab 4: Chat History */}
+          {/* Tab 4: Live Chat - ✅ NEW */}
           <TabsContent value="chat" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Chat History</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {notebook.chatMessages.length === 0 ? (
-                    <p className="text-center text-gray-500 py-12">
-                      No chat messages yet
-                    </p>
-                  ) : (
-                    notebook.chatMessages.map((msg: any) => {
-                      // Check if it's agent joined/left message
-                      const isAgentJoined =
-                        msg.authorType === "agent" &&
-                        msg.content.includes("entered the chat");
-                      const isAgentLeft =
-                        msg.authorType === "system" &&
-                        msg.content.includes("left the chat");
-
-                      if (isAgentJoined || isAgentLeft) {
-                        return (
-                          <AgentChatMessage
-                            key={msg.id}
-                            agentName={msg.authorName || "Agent"}
-                            agentIcon={AGENT_ICONS[msg.authorName || ""] || "🤖"}
-                            action={isAgentJoined ? "joined" : "left"}
-                          />
-                        );
-                      }
-
-                      // Regular chat message
-                      return (
-                        <div
-                          key={msg.id}
-                          className={`flex ${
-                            msg.authorType === "human"
-                              ? "justify-end"
-                              : "justify-start"
-                          }`}
-                        >
-                          <div
-                            className={`max-w-[70%] rounded-lg p-4 ${
-                              msg.authorType === "human"
-                                ? "bg-blue-500 text-white"
-                                : msg.authorType === "agent"
-                                ? "bg-purple-100 text-purple-900 border-2 border-purple-300"
-                                : "bg-gray-100 text-gray-900"
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 mb-1">
-                              {msg.authorType === "agent" && (
-                                <span className="text-xl">
-                                  {AGENT_ICONS[msg.authorName || ""] || "🤖"}
-                                </span>
-                              )}
-                              <p className="text-xs font-medium opacity-75">
-                                {msg.authorName || "Unknown"}
-                              </p>
-                            </div>
-                            <p className="text-sm whitespace-pre-wrap">
-                              {msg.content}
-                            </p>
-                            <p className="text-xs mt-2 opacity-50">
-                              {new Date(msg.createdAt).toLocaleString()}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <LiveChat
+              notebookId={notebook.id}
+              initialMessages={notebook.chatMessages}
+              isOrgMember={isOrgMember}
+            />
           </TabsContent>
         </Tabs>
       </div>
