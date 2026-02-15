@@ -1,8 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import NotebookEditor from "./NotebookEditor";
+import NotebookPageClient from "./notebook-page-client";
 
 export default async function NotebookPage({
   params,
@@ -55,7 +54,7 @@ export default async function NotebookPage({
     }
 
     /* ================================
-       FETCH NOTEBOOK
+       FETCH NOTEBOOK WITH AGENTS
     ================================= */
 
     const notebook = await prisma.notebook.findUnique({
@@ -99,24 +98,18 @@ export default async function NotebookPage({
     if (!isOwner && !isCollaborator) {
       return (
         <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center">
-          <Card className="max-w-md w-full">
-            <CardHeader>
-              <CardTitle>Access Denied</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600 mb-4">
-                You don&apos;t have permission to view this notebook.
-              </p>
-              
-              <a
-  href="/dashboard"
-  className="inline-block bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
->
-  Back to Dashboard
-</a>
-
-            </CardContent>
-          </Card>
+          <div className="max-w-md w-full bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-bold mb-4">Access Denied</h2>
+            <p className="text-gray-600 mb-4">
+              You don&apos;t have permission to view this notebook.
+            </p>
+            <a
+              href="/dashboard"
+              className="inline-block bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
+            >
+              Back to Dashboard
+            </a>
+          </div>
         </div>
       );
     }
@@ -155,6 +148,7 @@ export default async function NotebookPage({
         role: collab.role,
         status: collab.status,
         type: collab.type,
+        agentType: collab.agentType,
         agentName: collab.agentName,
         createdAt: collab.createdAt.toISOString(),
         user: collab.user
@@ -170,58 +164,52 @@ export default async function NotebookPage({
       })),
     };
 
+    // Get active agent IDs
+    const activeAgents = notebook.collaborators
+      .filter((c) => c.type === "agent" && c.status === "active")
+      .map((c) => {
+        const nameToId: Record<string, string> = {
+          "Media Content Strategist": "content-strategist",
+          "Research & Fact-Check AI": "research-agent",
+          "Creative Director AI": "creative-director",
+          "Audience Insights Analyst": "audience-analytics",
+        };
+        return nameToId[c.agentName || ""] || "";
+      })
+      .filter(Boolean);
+
     /* ================================
-       RENDER
+       RENDER CLIENT COMPONENT
     ================================= */
 
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <div className="mx-auto max-w-4xl">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-2xl">
-                {notebook.title || "Untitled Notebook"}
-              </CardTitle>
-
-              {isCollaborator && !isOwner && (
-                <p className="text-sm text-blue-600">📋 Shared with you</p>
-              )}
-            </CardHeader>
-
-            <CardContent>
-              <NotebookEditor notebook={serializedNotebook} />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <NotebookPageClient
+        notebook={serializedNotebook}
+        activeAgents={activeAgents}
+        isOwner={isOwner}
+        isCollaborator={isCollaborator}
+      />
     );
   } catch (error: any) {
     console.error("❌ Page error:", error);
 
     return (
       <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center">
-        <Card className="max-w-md w-full">
-          <CardHeader>
-            <CardTitle>Something went wrong</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600 mb-4">
-              We encountered an error loading this notebook.
-            </p>
-            <p className="text-sm text-gray-500 mb-4">
-              Error: {error.message || "Unknown error"}
-            </p>
-            
-            <a
-  href="/dashboard"
-  className="inline-block bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
->
-  Back to Dashboard
-</a>
-
-          
-          </CardContent>
-        </Card>
+        <div className="max-w-md w-full bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-bold mb-4">Something went wrong</h2>
+          <p className="text-gray-600 mb-4">
+            We encountered an error loading this notebook.
+          </p>
+          <p className="text-sm text-gray-500 mb-4">
+            Error: {error.message || "Unknown error"}
+          </p>
+          <a
+            href="/dashboard"
+            className="inline-block bg-black text-white px-4 py-2 rounded hover:bg-gray-800"
+          >
+            Back to Dashboard
+          </a>
+        </div>
       </div>
     );
   }

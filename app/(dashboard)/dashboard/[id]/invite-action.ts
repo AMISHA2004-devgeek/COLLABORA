@@ -13,7 +13,6 @@ export async function inviteHuman(
       throw new Error("Email and notebook ID are required");
     }
 
-    // ✅ Auto-detect the correct URL based on environment
     let baseUrl = 'http://localhost:3000';
     
     try {
@@ -26,7 +25,6 @@ export async function inviteHuman(
       console.warn("⚠️ Could not determine base URL, using localhost");
     }
 
-    // Remove trailing slash from baseUrl to prevent double slashes
     baseUrl = baseUrl.replace(/\/$/, '');
     
     const redirectUrl = `${baseUrl}/notebook/${notebookId}`;

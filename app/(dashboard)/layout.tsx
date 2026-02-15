@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { UserButton } from '@clerk/nextjs'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
+import { NotificationsPanel } from "@/components/notifications-panel"
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
@@ -23,6 +24,7 @@ export default function DashboardLayout({
             <h1 className="text-xl font-bold text-slate-900">COLLABORA</h1>
           </div>
           <div className="flex items-center gap-4">
+            <NotificationsPanel />
             <Link href="/dashboard">
               <Button variant="outline" size="sm">
                 <Plus className="mr-2 h-4 w-4" />

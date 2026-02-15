@@ -1,92 +1,88 @@
-"use client";
+import { auth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
+import { redirect, notFound } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ChangesReviewClient } from "./changes-review-client";
 
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Check, X } from "lucide-react";
+export default async function ChangesPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const { userId } = await auth();
 
-export default function ChangesPage({ params }: { params: { id: string } }) {
-  const [changes, setChanges] = useState([]);
+  if (!userId) {
+    redirect("/sign-in");
+  }
 
-  useEffect(() => {
-    fetchChanges();
-  }, []);
+  // Get notebook
+  const notebook = await prisma.notebook.findUnique({
+    where: { id: params.id },
+  });
 
-  const fetchChanges = async () => {
-    const res = await fetch(`/api/changes/${params.id}`);
-    const data = await res.json();
-    if (data.success) {
-      setChanges(data.changes);
-    }
-  };
+  if (!notebook) {
+    notFound();
+  }
 
-  const handleReview = async (changeId: string, action: "accept" | "reject") => {
-    const res = await fetch("/api/changes/review", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ changeId, action }),
-    });
+  // Verify ownership
+  if (notebook.userId !== userId) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
+        <Card className="max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle>Access Denied</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>Only the notebook owner can review changes.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-    if (res.ok) {
-      fetchChanges();
-    }
-  };
+  // Get all proposed changes
+  const changes = await prisma.proposedChange.findMany({
+    where: { notebookId: params.id },
+    include: {
+      proposer: {
+        select: {
+          email: true,
+          name: true,
+        },
+      },
+    },
+    orderBy: [{ status: "asc" }, { lineNumber: "asc" }],
+  });
 
-  const pendingChanges = changes.filter((c: any) => c.status === "pending");
+  const serializedChanges = changes.map((c) => ({
+    id: c.id,
+    lineNumber: c.lineNumber,
+    originalText: c.originalText,
+    proposedText: c.proposedText,
+    reason: c.reason,
+    status: c.status,
+    createdAt: c.createdAt.toISOString(),
+    proposerEmail: c.proposer.email,
+  }));
 
   return (
-    <div className="container max-w-4xl mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-6">Proposed Changes</h1>
-      
-      {pendingChanges.length === 0 ? (
-        <Card className="p-8 text-center text-gray-500">
-          No pending changes to review
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="max-w-6xl mx-auto">
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-2xl">Review Agent Suggestions</CardTitle>
+            <p className="text-sm text-gray-600">
+              Accept or reject changes proposed by AI agents
+            </p>
+          </CardHeader>
         </Card>
-      ) : (
-        <div className="space-y-4">
-          {pendingChanges.map((change: any) => (
-            <Card key={change.id} className="p-4">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <p className="text-sm text-gray-500">
-                    Line {change.lineNumber} • By {change.proposer.email}
-                  </p>
-                  {change.reason && (
-                    <p className="text-sm italic mt-1">"{change.reason}"</p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => handleReview(change.id, "accept")}
-                    className="bg-green-600"
-                  >
-                    <Check className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleReview(change.id, "reject")}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4 mt-3">
-                <div>
-                  <p className="text-xs font-medium text-red-600 mb-1">Original</p>
-                  <p className="text-sm bg-red-50 p-2 rounded">{change.originalText}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-green-600 mb-1">Proposed</p>
-                  <p className="text-sm bg-green-50 p-2 rounded">{change.proposedText}</p>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
+
+        <ChangesReviewClient
+          notebookId={params.id}
+          changes={serializedChanges}
+        />
+      </div>
     </div>
   );
 }
