@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Save, Trash2, X, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-// ✅ ADD THIS IMPORT
-import { inviteHuman } from "./invite-action";
+// ✅ Import the modal instead of the function directly
+import InviteModal from "./InviteModal";
 
 type Message = {
   authorType: "human" | "agent" | "system";
@@ -47,8 +47,9 @@ export default function NotebookEditor({ notebook }: any) {
 
   // ✅ Add Collaborator State
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false); // ✅ NEW: For organization invite
   const [collabType, setCollabType] = useState<"human" | "agent">("human");
-  const [collabValue, setCollabValue] = useState(""); // This will now hold EMAIL for humans
+  const [collabValue, setCollabValue] = useState("");
 
   // ===============================
   // Save Notebook
@@ -76,42 +77,36 @@ export default function NotebookEditor({ notebook }: any) {
       setIsEditingSummary(false);
 
       router.refresh();
-      alert("Notebook saved successfully!");
+      toast.success("Notebook saved successfully!");
     } catch (error: any) {
-      alert(error.message);
+      toast.error(error.message);
     } finally {
       setLoading(false);
     }
   }
 
   // ===============================
-  // ✅ UPDATED: Add Collaborator (Now uses Clerk for humans)
+  // Add Agent Collaborator
   // ===============================
-  async function handleAddCollaborator() {
+  async function handleAddAgent() {
     if (!collabValue.trim()) return;
 
     try {
-      if (collabType === "human") {
-        // ✅ NEW: Use Clerk invitation server action
-        await inviteHuman(notebook.id, collabValue);
-        alert("Invitation sent! They'll receive an email.");
-      } else {
-        // Keep existing agent logic
-        await fetch("/api/notebook/add-agent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            notebookId: notebook.id,
-            value: collabValue,
-          }),
-        });
-      }
+      await fetch("/api/notebook/add-agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notebookId: notebook.id,
+          value: collabValue,
+        }),
+      });
 
       setCollabValue("");
       setShowAddModal(false);
       router.refresh();
+      toast.success("Agent added successfully!");
     } catch (error: any) {
-      alert(error.message || "Failed to add collaborator");
+      toast.error(error.message || "Failed to add agent");
     }
   }
 
@@ -168,7 +163,7 @@ export default function NotebookEditor({ notebook }: any) {
 
       router.refresh();
     } catch (error) {
-      alert("Chat failed");
+      toast.error("Chat failed");
     } finally {
       setLoading(false);
     }
@@ -191,7 +186,7 @@ export default function NotebookEditor({ notebook }: any) {
       router.push("/dashboard");
       router.refresh();
     } catch {
-      alert("Delete failed");
+      toast.error("Delete failed");
       setLoading(false);
     }
   }
@@ -224,10 +219,8 @@ export default function NotebookEditor({ notebook }: any) {
               {collab.type === "agent" ? (
                 `🤖 ${collab.agentName}`
               ) : collab.status === "pending" ? (
-                // ✅ Show pending invitations
                 `📧 ${collab.email} (Pending)`
               ) : (
-                // ✅ Show active users with their name if available
                 `👤 ${collab.user?.firstName || collab.email}`
               )}{" "}
               ({collab.role})
@@ -267,13 +260,11 @@ export default function NotebookEditor({ notebook }: any) {
 
       {/* Chat */}
       <div className="bg-white p-4 rounded-lg border">
-        {/* AI CHAT SECTION */}
         <div className="mt-8">
           <h3 className="font-semibold mb-4">
             AI Chat ({messages.length} messages)
           </h3>
 
-          {/* CHAT HISTORY */}
           <div className="space-y-4 mb-6">
             {messages.length === 0 ? (
               <p className="text-gray-400 text-sm">No messages yet. Start a conversation!</p>
@@ -287,7 +278,6 @@ export default function NotebookEditor({ notebook }: any) {
             )}
           </div>
 
-          {/* INPUT BOX */}
           <div className="flex gap-2">
             <input
               type="text"
@@ -327,7 +317,7 @@ export default function NotebookEditor({ notebook }: any) {
         </button>
       </div>
 
-      {/* ✅ UPDATED: Modal with Email Input */}
+      {/* ✅ SIMPLE MODAL: Choose Human or Agent */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg w-96 space-y-4">
@@ -344,42 +334,66 @@ export default function NotebookEditor({ notebook }: any) {
               <option value="agent">Agent</option>
             </select>
 
-            {/* ✅ UPDATED: Email input for humans */}
-            <input
-              type={collabType === "human" ? "email" : "text"}
-              value={collabValue}
-              onChange={(e) => setCollabValue(e.target.value)}
-              placeholder={
-                collabType === "human"
-                  ? "Enter Email Address"
-                  : "Enter Agent Name"
-              }
-              className="w-full border rounded p-2"
-            />
-
-            {collabType === "human" && (
-              <p className="text-xs text-gray-500">
-                💡 An invitation email will be sent to this address
-              </p>
+            {collabType === "agent" && (
+              <>
+                <input
+                  type="text"
+                  value={collabValue}
+                  onChange={(e) => setCollabValue(e.target.value)}
+                  placeholder="Enter Agent Name"
+                  className="w-full border rounded p-2"
+                />
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowAddModal(false)}
+                    className="px-4 py-2 border rounded"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAddAgent}
+                    className="bg-black text-white px-4 py-2 rounded"
+                  >
+                    Add Agent
+                  </button>
+                </div>
+              </>
             )}
 
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 border rounded"
-              >
-                Cancel
-              </button>
-
-              <button
-                onClick={handleAddCollaborator}
-                className="bg-black text-white px-4 py-2 rounded"
-              >
-                {collabType === "human" ? "Send Invite" : "Add Agent"}
-              </button>
-            </div>
+            {collabType === "human" && (
+              <>
+                <p className="text-sm text-gray-600">
+                  You'll be able to select an organization and send an invitation.
+                </p>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowAddModal(false)}
+                    className="px-4 py-2 border rounded"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowAddModal(false);
+                      setShowInviteModal(true);
+                    }}
+                    className="bg-black text-white px-4 py-2 rounded"
+                  >
+                    Next
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
+      )}
+
+      {/* ✅ ORGANIZATION INVITE MODAL */}
+      {showInviteModal && (
+        <InviteModal
+          notebookId={notebook.id}
+          onClose={() => setShowInviteModal(false)}
+        />
       )}
     </div>
   );

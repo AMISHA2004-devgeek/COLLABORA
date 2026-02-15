@@ -1,106 +1,120 @@
 "use server";
 
-import { clerkClient } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 
-export async function inviteHuman(
+export async function inviteHumanToOrganization(
   notebookId: string,
-  email: string
+  email: string,
+  organizationId: string, // ✅ NEW: Organization to invite to
+  organizationName?: string // For new orgs
 ) {
   try {
+    const { userId } = await auth();
+    if (!userId) throw new Error("Not authenticated");
+
     // Validate inputs
-    if (!email || !notebookId) {
-      throw new Error("Email and notebook ID are required");
+    if (!email || !notebookId || !organizationId) {
+      throw new Error("Email, notebook ID, and organization are required");
     }
 
-    let baseUrl = 'http://localhost:3000';
-    
-    try {
-      if (process.env.NEXT_PUBLIC_APP_URL) {
-        baseUrl = process.env.NEXT_PUBLIC_APP_URL;
-      } else if (process.env.VERCEL_URL) {
-        baseUrl = `https://${process.env.VERCEL_URL}`;
-      }
-    } catch (urlError) {
-      console.warn("⚠️ Could not determine base URL, using localhost");
-    }
-
-    baseUrl = baseUrl.replace(/\/$/, '');
-    
-    const redirectUrl = `${baseUrl}/notebook/${notebookId}`;
-
-    
-    console.log("=" .repeat(60));
-    console.log("🚀 INVITATION ATTEMPT");
-    console.log("Email:", email);
-    console.log("Notebook ID:", notebookId);
-    console.log("Redirect URL:", redirectUrl);
-    console.log("Environment:", process.env.NODE_ENV);
-    console.log("=" .repeat(60));
-
-    // Get Clerk client
     const client = await clerkClient();
 
-    // Send Clerk invitation (even if user exists)
-    const invitation = await client.invitations.createInvitation({
+    // Check if creating new organization
+    if (organizationId === "new" && organizationName) {
+      console.log("🏢 Creating new organization:", organizationName);
+      
+      const newOrg = await client.organizations.createOrganization({
+        name: organizationName,
+        createdBy: userId,
+      });
+      
+      organizationId = newOrg.id;
+      console.log("✅ Organization created:", organizationId);
+
+      // Update notebook with organization
+      await prisma.notebook.update({
+        where: { id: notebookId },
+        data: { organizationId: newOrg.id },
+      });
+    }
+
+    // Build redirect URL
+    let baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    baseUrl = baseUrl.replace(/\/$/, '');
+    const redirectUrl = `${baseUrl}/accept-invite?notebook=${notebookId}&org=${organizationId}`;
+    
+    console.log("=" .repeat(60));
+    console.log("🚀 ORGANIZATION INVITATION");
+    console.log("Email:", email);
+    console.log("Notebook:", notebookId);
+    console.log("Organization:", organizationId);
+    console.log("Redirect:", redirectUrl);
+    console.log("=" .repeat(60));
+
+    // Send Clerk organization invitation
+    const invitation = await client.organizations.createOrganizationInvitation({
+      organizationId,
       emailAddress: email,
+      role: "org:member", // Can be: org:admin, org:member
       redirectUrl,
-      ignoreExisting: true, // ✅ Allow inviting existing users
     });
     
-    console.log("✅ Clerk invitation created successfully!");
+    console.log("✅ Clerk org invitation sent!");
     console.log("Invitation ID:", invitation.id);
-    console.log("Status:", invitation.status);
 
     // Store in database
-    const collaborator = await prisma.notebookCollaborator.create({
+    const invite = await prisma.collaborationInvite.create({
       data: {
         notebookId,
-        email,
-        type: "human",
-        role: "editor",
+        senderId: userId,
+        receiverEmail: email,
+        message: `Join our organization to collaborate on: ${notebookId}`,
         status: "pending",
       },
     });
 
-    console.log("✅ Database record created");
-    console.log("Collaborator ID:", collaborator.id);
+    console.log("✅ Database invite record created");
+    console.log("Invite ID:", invite.id);
     console.log("=" .repeat(60));
 
-    return { success: true, invitationId: invitation.id };
+    return { 
+      success: true, 
+      invitationId: invitation.id,
+      organizationId,
+    };
     
   } catch (error: any) {
-    console.error("=" .repeat(60));
-    console.error("❌ INVITATION ERROR");
-    console.error("Error type:", error?.constructor?.name || "Unknown");
-    console.error("Error message:", error?.message || "No message");
-    console.error("Error status:", error?.status || "No status");
+    console.error("❌ INVITATION ERROR:", error.message);
     
-    // Try to extract Clerk-specific errors
-    if (error?.errors && Array.isArray(error.errors)) {
-      console.error("Clerk error details:");
-      error.errors.forEach((err: any, i: number) => {
-        console.error(`  [${i}]`, {
-          code: err?.code,
-          message: err?.message,
-          longMessage: err?.longMessage,
-        });
-      });
+    if (error?.errors) {
+      console.error("Clerk errors:", error.errors);
     }
     
-    console.error("=" .repeat(60));
+    throw new Error(error.message || "Failed to send invitation");
+  }
+}
+
+// Get user's organizations
+export async function getUserOrganizations() {
+  try {
+    const { userId } = await auth();
+    if (!userId) throw new Error("Not authenticated");
+
+    const client = await clerkClient();
     
-    // Return user-friendly error message
-    let userMessage = "Failed to send invitation. ";
-    
-    if (error?.errors && Array.isArray(error.errors) && error.errors.length > 0) {
-      userMessage += error.errors[0]?.longMessage || error.errors[0]?.message || error.message;
-    } else if (error?.message) {
-      userMessage += error.message;
-    } else {
-      userMessage += "Please check the server logs for details.";
-    }
-    
-    throw new Error(userMessage);
+    // Get organizations where user is a member
+    const memberships = await client.users.getOrganizationMembershipList({
+      userId,
+    });
+
+    return memberships.data.map((membership) => ({
+      id: membership.organization.id,
+      name: membership.organization.name,
+      role: membership.role,
+    }));
+  } catch (error: any) {
+    console.error("Error fetching organizations:", error);
+    return [];
   }
 }
