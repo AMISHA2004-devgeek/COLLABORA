@@ -6,6 +6,7 @@ import { Pencil, Save, Trash2, X, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 // ✅ Import the modal instead of the function directly
 import InviteModal from "./InviteModal";
+import AgentPanel from "./AgentPanel";
 
 type Message = {
   authorType: "human" | "agent" | "system";
@@ -242,6 +243,8 @@ export default function NotebookEditor({ notebook }: any) {
           + Add Collaborator
         </button>
       </div>
+      {/* AI Agent Analysis */}
+<AgentPanel notebookId={notebook.id} />
 
       {/* Title */}
       <div className="bg-white p-4 rounded-lg border">
